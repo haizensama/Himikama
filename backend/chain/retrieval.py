@@ -32,7 +32,7 @@ Query Construction:
     All queries built from intake fields only.
     Which fields are used depends on the step:
         Steps 2, 5:  actor_role + what_happened
-        Step 4:      what_happened + harm_suffered
+        Step 4:      what_happened + harm_suffered + actor_role
         Step 7:      what_happened + harm_suffered + actor_role
 
 Keyword Boost Map:
@@ -72,7 +72,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────
 
 # Articles retrieved per semantic search (Steps 2, 4, 5)
-ARTICLE_TOP_N = 6
+ARTICLE_TOP_N = 8
 
 # Cases retrieved in Stage A before re-ranking (Step 7)
 CASE_STAGE_A_N = 10
@@ -96,107 +96,162 @@ CASE_STAGE_A_PASS_TO_LLM = 5
 
 KEYWORD_MAP: dict[str, list[str]] = {
 
-    # ── Physical liberty ─────────────────────────────────────
-    "arrest":       ["13(1)", "13(2)"],
-    "arrested":     ["13(1)", "13(2)"],
-    "detain":       ["13(1)", "13(2)", "13(3)"],
-    "detained":     ["13(1)", "13(2)", "13(3)"],
-    "detention":    ["13(1)", "13(2)", "13(3)"],
-    "custody":      ["13(1)", "13(2)", "13(3)"],
-    "warrant":      ["13(1)"],
-    "magistrate":   ["13(2)"],
-    "remand":       ["13(2)"],
-    "reason":       ["13(3)"],
-    "informed":     ["13(3)"],
-    "charge":       ["13(3)", "13(4)"],
-    "trial":        ["13(3)"],
-    "innocent":     ["13(5)"],
-    "presumed":     ["13(5)"],
+    # ── Physical liberty: arrest and custody ─────────────────
+    # Article 13(1): arrest according to law + reason for arrest.
+    "arrest":              ["13(1)", "13(2)"],
+    "arrested":            ["13(1)", "13(2)"],
+    "arresting":           ["13(1)", "13(2)"],
+    "warrant":             ["13(1)"],
+    "without warrant":     ["13(1)"],
+    "without explaining":  ["13(1)"],
+    "without explanation": ["13(1)"],
+    "not told why":        ["13(1)"],
+    "not informed why":    ["13(1)"],
+    "reason for arrest":   ["13(1)"],
+
+    # Article 13(2): custody / judicial production.
+    "detain":              ["13(2)"],
+    "detained":            ["13(2)"],
+    "detention":           ["13(2)"],
+    "custody":             ["13(2)"],
+    "held":                ["13(2)"],
+    "magistrate":          ["13(2)"],
+    "judge":               ["13(2)"],
+    "produced before":     ["13(2)"],
+    "remand":              ["13(2)"],
+
+    # Article 13(3): fair trial / charged person protections.
+    # Do not boost 13(3) merely because the user says "reason".
+    "charged":             ["13(3)"],
+    "charge sheet":        ["13(3)"],
+    "fair trial":          ["13(3)"],
+    "trial":               ["13(3)"],
+    "lawyer":              ["13(3)"],
+    "attorney":            ["13(3)"],
+    "legal counsel":       ["13(3)"],
+    "heard in court":      ["13(3)"],
+    "right to silence":    ["13(3)"],
+
+    # Article 13(4), 13(5), 13(6): punishment / penal safeguards.
+    "punished":            ["13(4)"],
+    "punishment":          ["13(4)"],
+    "sentence":            ["13(4)"],
+    "retrospective":       ["13(6)"],
+    "ex post facto":       ["13(6)"],
+    "innocent":            ["13(5)"],
+    "presumed innocent":   ["13(5)"],
 
     # ── Physical integrity ───────────────────────────────────
-    "hit":          ["11"],
-    "beat":         ["11"],
-    "beaten":       ["11"],
-    "assault":      ["11"],
-    "assaulted":    ["11"],
-    "torture":      ["11"],
-    "tortured":     ["11"],
-    "cruel":        ["11"],
-    "inhuman":      ["11"],
-    "degrading":    ["11"],
-    "pain":         ["11"],
-    "injury":       ["11"],
-    "injured":      ["11"],
+    "hit":                 ["11"],
+    "beat":                ["11"],
+    "beaten":              ["11"],
+    "assault":             ["11"],
+    "assaulted":           ["11"],
+    "torture":             ["11"],
+    "tortured":            ["11"],
+    "cruel":               ["11"],
+    "inhuman":             ["11"],
+    "degrading":           ["11"],
+    "pain":                ["11"],
+    "injury":              ["11"],
+    "injured":             ["11"],
 
-    # ── Equality and discrimination ──────────────────────────
-    "discriminat":  ["12(1)", "12(2)"],
-    "equality":     ["12(1)"],
-    "equal":        ["12(1)"],
-    "arbitrary":    ["12(1)"],
-    "unfair":       ["12(1)"],
-    "race":         ["12(2)"],
-    "religion":     ["12(2)", "14(1)(e)"],
-    "caste":        ["12(2)"],
-    "sex":          ["12(2)"],
+    # ── Equality and arbitrary unequal treatment ─────────────
+    "equality":            ["12(1)"],
+    "equal":               ["12(1)"],
+    "equal protection":    ["12(1)"],
+    "unequal":             ["12(1)"],
+    "differential":        ["12(1)"],
+    "different treatment": ["12(1)"],
+    "arbitrary":           ["12(1)"],
+    "unfair":              ["12(1)"],
+    "irrational":          ["12(1)"],
+    "eligible":            ["12(1)"],
+    "eligibility":         ["12(1)"],
+    "criteria":            ["12(1)"],
+    "marks":               ["12(1)"],
+    "lower marks":         ["12(1)"],
+    "merit":               ["12(1)"],
+    "selected others":     ["12(1)"],
+    "accepted others":     ["12(1)"],
+
+    # ── Discrimination on protected or identity-linked grounds ─
+    "discriminat":         ["12(1)", "12(2)"],
+    "race":                ["12(2)"],
+    "religion":            ["12(2)", "14(1)(e)"],
+    "ethnic":              ["12(2)"],
+    "ethnicity":           ["12(2)"],
+    "language":            ["12(2)", "14(1)(f)"],
+    "caste":               ["12(2)"],
+    "sex":                 ["12(2)"],
+    "gender":              ["12(2)"],
+    "political opinion":   ["12(2)"],
+    "place of birth":      ["12(2)"],
+    "community":           ["12(2)"],
+
+    # ── Education / admission ────────────────────────────────
+    # Education admissions often raise 12(1) arbitrary unequal
+    # treatment even when 12(2) discrimination is uncertain.
+    "school":              ["12(1)", "12(2)"],
+    "education":           ["12(1)", "12(2)"],
+    "admission":           ["12(1)", "12(2)"],
+    "application":         ["12(1)"],
+    "principal":           ["12(1)", "12(2)"],
+    "student":             ["12(1)"],
+    "university":          ["12(1)", "12(2)"],
 
     # ── Employment and occupation ────────────────────────────
-    "employment":   ["12(1)", "14(1)(g)"],
-    "dismissed":    ["12(1)", "14(1)(g)"],
-    "dismiss":      ["12(1)", "14(1)(g)"],
-    "promotion":    ["12(1)", "14(1)(g)"],
-    "sacked":       ["12(1)", "14(1)(g)"],
-    "fired":        ["12(1)", "14(1)(g)"],
-    "occupation":   ["14(1)(g)"],
-    "profession":   ["14(1)(g)"],
-    "business":     ["14(1)(g)"],
-    "license":      ["14(1)(g)"],
-    "licence":      ["14(1)(g)"],
+    "employment":          ["12(1)", "14(1)(g)"],
+    "dismissed":           ["12(1)", "14(1)(g)"],
+    "dismiss":             ["12(1)", "14(1)(g)"],
+    "promotion":           ["12(1)", "14(1)(g)"],
+    "sacked":              ["12(1)", "14(1)(g)"],
+    "fired":               ["12(1)", "14(1)(g)"],
+    "occupation":          ["14(1)(g)"],
+    "profession":          ["14(1)(g)"],
+    "business":            ["14(1)(g)"],
+    "license":             ["14(1)(g)"],
+    "licence":             ["14(1)(g)"],
 
     # ── Expression and assembly ──────────────────────────────
-    "speech":       ["14(1)(a)"],
-    "publish":      ["14(1)(a)"],
-    "expression":   ["14(1)(a)"],
-    "press":        ["14(1)(a)"],
-    "newspaper":    ["14(1)(a)"],
-    "broadcast":    ["14(1)(a)"],
-    "assembly":     ["14(1)(b)"],
-    "protest":      ["14(1)(b)"],
-    "association":  ["14(1)(c)"],
-    "union":        ["14(1)(c)", "14(1)(d)"],
+    "speech":              ["14(1)(a)"],
+    "publish":             ["14(1)(a)"],
+    "expression":          ["14(1)(a)"],
+    "press":               ["14(1)(a)"],
+    "newspaper":           ["14(1)(a)"],
+    "broadcast":           ["14(1)(a)"],
+    "assembly":            ["14(1)(b)"],
+    "protest":             ["14(1)(b)"],
+    "association":         ["14(1)(c)"],
+    "union":               ["14(1)(c)", "14(1)(d)"],
 
     # ── Religion and culture ─────────────────────────────────
-    "worship":      ["14(1)(e)"],
-    "religious":    ["14(1)(e)"],
-    "belief":       ["14(1)(e)"],
-    "culture":      ["14(1)(f)"],
-    "language":     ["14(1)(f)"],
+    "worship":             ["14(1)(e)"],
+    "religious":           ["14(1)(e)"],
+    "belief":              ["14(1)(e)"],
+    "culture":             ["14(1)(f)"],
 
     # ── Movement and residence ───────────────────────────────
-    "movement":     ["14(1)(h)"],
-    "travel":       ["14(1)(h)"],
-    "evict":        ["14(1)(h)"],
-    "evicted":      ["14(1)(h)"],
-
-    # ── Education ────────────────────────────────────────────
-    "school":       ["12(2)"],
-    "education":    ["12(2)"],
-    "admission":    ["12(2)"],
-    "university":   ["12(1)", "12(2)"],
+    "movement":            ["14(1)(h)"],
+    "travel":              ["14(1)(h)"],
+    "evict":               ["14(1)(h)"],
+    "evicted":             ["14(1)(h)"],
 
     # ── Property and state interference ─────────────────────
-    "land":         ["12(1)"],
-    "property":     ["12(1)"],
-    "seized":       ["12(1)"],
-    "confiscat":    ["12(1)"],
+    "land":                ["12(1)"],
+    "property":            ["12(1)"],
+    "seized":              ["12(1)"],
+    "confiscat":           ["12(1)"],
 
     # ── Information access ───────────────────────────────────
-    "information":  ["14(A)"],
-    "access":       ["14(A)"],
+    "information":         ["14(A)"],
+    "access to information": ["14(A)"],
+    "rti":                 ["14(A)"],
 
     # ── Security legislation ─────────────────────────────────
-    "terrorism":    ["13(1)", "13(2)"],
-    "pta":          ["13(1)", "13(2)"],
-    "emergency":    ["13(1)", "13(2)"],
+    "terrorism":           ["13(1)", "13(2)"],
+    "pta":                 ["13(1)", "13(2)"],
+    "emergency":           ["13(1)", "13(2)"],
 }
 
 
@@ -228,7 +283,10 @@ def build_article_query(intake: dict, step: str) -> str:
     if step == "step_2":
         parts = [actor_role, what_happened]
     elif step == "step_4":
-        parts = [what_happened, harm_suffered]
+        # Include actor_role for Step 4 because it often carries legally
+        # important context such as "government school principal",
+        # "public employer", "police officer", or "immigration officer".
+        parts = [what_happened, harm_suffered, actor_role]
     elif step == "step_5":
         parts = [what_happened, actor_role]
     else:
@@ -264,42 +322,290 @@ def build_case_query(intake: dict) -> str:
 
 def get_keyword_boost_articles(intake: dict) -> list[str]:
     """
-    Scan intake fields for legal keywords and return the
-    corresponding article numbers from the keyword map.
+    Scan intake fields for legal keywords and return corresponding
+    article numbers from the keyword map.
 
-    Called by steps.py Step 4 to supplement the articles
-    identified by the LLM with keyword-matched articles.
-    Ensures no relevant article is missed due to weak
-    semantic similarity.
+    This combines:
+        1. simple deterministic keyword matching; and
+        2. contextual phrase rules for common FR patterns.
 
-    Args:
-        intake: Confirmed intake object dict.
-
-    Returns:
-        Deduplicated list of article number strings.
-        e.g. ["13(1)", "13(2)", "11"]
+    The contextual layer improves Step 4 recall without allowing
+    the LLM to invent retrieval targets.
     """
-    text = " ".join([
-        (intake.get("what_happened") or ""),
-        (intake.get("harm_suffered") or ""),
-        (intake.get("actor_role")    or ""),
-    ]).lower()
+    text = _build_intake_search_text(intake)
 
     boosted: list[str] = []
+
     for keyword, articles in KEYWORD_MAP.items():
         if keyword in text:
             boosted.extend(articles)
 
-    # Deduplicate preserving first-seen order
-    seen:   set[str]  = set()
+    boosted.extend(_contextual_keyword_boost_articles(text))
+
+    # Deduplicate preserving first-seen order.
+    seen: set[str] = set()
     result: list[str] = []
+
     for article in boosted:
         if article not in seen:
             seen.add(article)
             result.append(article)
 
+    result = _apply_article_number_precision_filters(result, text)
+
     logger.debug(f"Keyword boost articles: {result}")
     return result
+
+
+def _build_intake_search_text(intake: dict) -> str:
+    """
+    Build one lower-cased text string for deterministic keyword and
+    contextual filtering.
+
+    Includes user_narrative because users often place legally important
+    details there that are not repeated in what_happened or harm_suffered.
+    """
+    return " ".join([
+        (intake.get("what_happened") or ""),
+        (intake.get("harm_suffered") or ""),
+        (intake.get("actor_role") or ""),
+        (intake.get("user_narrative") or ""),
+    ]).lower()
+
+
+def _apply_article_number_precision_filters(
+    article_numbers: list[str],
+    text: str,
+) -> list[str]:
+    """
+    Remove high-risk false-positive article boosts.
+
+    Article 14(1)(a) should be included only when the facts concern
+    restriction of the user's own speech, expression, publication,
+    media activity, or communicative protest. A state actor merely
+    making a statement is evidence for equality/discrimination analysis,
+    not a free-expression infringement.
+    """
+    filtered: list[str] = []
+
+    for article in article_numbers:
+        if article == "14(1)(a)" and not _has_expression_restriction_context(text):
+            logger.debug(
+                "Suppressing Article 14(1)(a) keyword boost: no expression "
+                "restriction context found."
+            )
+            continue
+
+        filtered.append(article)
+
+    return filtered
+
+
+def _apply_retrieved_article_precision_filters(
+    articles: list[dict],
+    *,
+    intake: dict,
+    step: str,
+) -> list[dict]:
+    """
+    Filter retrieved article objects for Step 4 precision.
+
+    Semantic search can retrieve Article 14(1)(a) in scenarios where the
+    facts mention a statement by a state actor. Step 4 then sees the
+    article and may over-identify freedom of expression. This filter keeps
+    14(1)(a) only when the intake describes restriction of the user's own
+    expression.
+    """
+    if step != "step_4":
+        return articles
+
+    text = _build_intake_search_text(intake)
+    filtered: list[dict] = []
+
+    for article in articles:
+        number = str(article.get("article_number", "")).strip()
+
+        if number == "14(1)(a)" and not _has_expression_restriction_context(text):
+            logger.info(
+                "Step 4 precision filter removed Article 14(1)(a): "
+                "no expression restriction context found."
+            )
+            continue
+
+        filtered.append(article)
+
+    return filtered
+
+
+def _has_expression_restriction_context(text: str) -> bool:
+    """
+    Return True when facts indicate restriction of the user's own
+    speech/expression/publication/media activity.
+
+    This intentionally requires both:
+        1. an expression/publication concept; and
+        2. a restriction/punishment/prevention concept.
+
+    It prevents false positives such as:
+        "the principal made a discriminatory statement"
+    from becoming an Article 14(1)(a) candidate.
+    """
+    if not text:
+        return False
+
+    direct_phrases = [
+        "freedom of speech",
+        "freedom of expression",
+        "prevented me from speaking",
+        "stopped me from speaking",
+        "not allowed to speak",
+        "not permitted to speak",
+        "prevented us from speaking",
+        "stopped us from speaking",
+        "not allowed us to speak",
+        "censored my",
+        "censored our",
+        "banned my publication",
+        "banned our publication",
+        "blocked my post",
+        "removed my post",
+    ]
+
+    if _contains_any(text, direct_phrases):
+        return True
+
+    expression_terms = [
+        "speech",
+        "speak",
+        "speaking",
+        "spoke",
+        "expression",
+        "expressed",
+        "opinion",
+        "criticised",
+        "criticized",
+        "criticism",
+        "publish",
+        "published",
+        "publication",
+        "article",
+        "journalist",
+        "press",
+        "newspaper",
+        "broadcast",
+        "media",
+        "social media",
+        "facebook",
+        "twitter",
+        "x.com",
+        "youtube",
+        "tiktok",
+        "post",
+        "slogan",
+        "placard",
+        "poster",
+        "pamphlet",
+    ]
+
+    restriction_terms = [
+        "prevented",
+        "stopped",
+        "blocked",
+        "banned",
+        "prohibited",
+        "censored",
+        "removed",
+        "deleted",
+        "silenced",
+        "threatened",
+        "punished",
+        "disciplined",
+        "arrested",
+        "detained",
+        "summoned",
+        "questioned",
+        "not allowed",
+        "not permitted",
+        "permission denied",
+        "denied permission",
+        "refused permission",
+        "confiscated",
+        "seized",
+    ]
+
+    return _contains_any(text, expression_terms) and _contains_any(
+        text,
+        restriction_terms,
+    )
+
+
+def _contextual_keyword_boost_articles(text: str) -> list[str]:
+    """
+    Add article boosts for common fact patterns that are better
+    detected through combinations of words than one keyword alone.
+    """
+    boosts: list[str] = []
+
+    education_terms = [
+        "school", "education", "admission", "student",
+        "principal", "university", "application",
+    ]
+    unequal_treatment_terms = [
+        "eligible", "eligibility", "criteria", "marks", "lower marks",
+        "accepted other", "accepted others", "selected other",
+        "selected others", "refused", "rejected", "same criteria",
+        "treated differently", "different treatment", "arbitrary",
+    ]
+    protected_ground_terms = [
+        "race", "religion", "ethnic", "ethnicity", "language",
+        "caste", "sex", "gender", "political opinion",
+        "place of birth", "community",
+    ]
+
+    if _contains_any(text, education_terms) and _contains_any(
+        text,
+        unequal_treatment_terms,
+    ):
+        boosts.append("12(1)")
+
+    if _contains_any(text, education_terms) and _contains_any(
+        text,
+        protected_ground_terms,
+    ):
+        boosts.append("12(2)")
+
+    arrest_terms = ["arrest", "arrested", "arresting"]
+    no_reason_terms = [
+        "without explaining", "without explanation", "not told why",
+        "not informed why", "no reason", "without giving a reason",
+        "without explaining why",
+    ]
+    if _contains_any(text, arrest_terms) and _contains_any(text, no_reason_terms):
+        boosts.append("13(1)")
+
+    custody_terms = ["detain", "detained", "detention", "custody", "held"]
+    judicial_terms = [
+        "magistrate", "judge", "court", "produced before",
+        "not produced", "without being produced",
+    ]
+    if _contains_any(text, custody_terms) and _contains_any(text, judicial_terms):
+        boosts.append("13(2)")
+
+    fair_trial_terms = [
+        "charged", "fair trial", "trial", "lawyer", "attorney",
+        "legal counsel", "right to silence", "heard in court",
+    ]
+    if _contains_any(text, fair_trial_terms):
+        boosts.append("13(3)")
+
+    return boosts
+
+
+def _contains_any(text: str, terms: list[str]) -> bool:
+    """
+    True if any term appears in text.
+    """
+    return any(term in text for term in terms)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -362,12 +668,17 @@ def retrieve_articles(
         r["source"] = "keyword"
 
     combined = semantic_results + boosted_results
+    combined = _apply_retrieved_article_precision_filters(
+        combined,
+        intake=intake,
+        step=step,
+    )
 
     logger.info(
         f"{step} article retrieval — "
         f"{len(semantic_results)} semantic + "
         f"{len(boosted_results)} keyword-boosted = "
-        f"{len(combined)} total"
+        f"{len(combined)} total after precision filters"
     )
     return combined
 

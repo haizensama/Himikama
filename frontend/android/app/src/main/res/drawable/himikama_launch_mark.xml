@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M54,16 L54,80 M24,33 L84,33 M24,33 L15,59 M24,33 L33,59 M84,33 L75,59 M84,33 L93,59 M10,59 Q24,76 38,59 M70,59 Q84,76 98,59 M40,80 L68,80 M34,90 L74,90"
+        android:strokeColor="@color/himikama_gold"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="3" />
+    <path
+        android:fillColor="@color/himikama_navy"
+        android:pathData="M47,21 L52,21 L52,51 L66,51 L66,21 L71,21 L71,75 L66,75 L66,56 L52,56 L52,75 L47,75 Z" />
+</vector>

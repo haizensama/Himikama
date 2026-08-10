@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[codz]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Server-only credentials - never commit these
+backend/secrets/
+secrets/
+**/firebase-service-account*.json
+**/*service-account-key*.json
+
+# Sensitive local legal-analysis records
+backend/attempts/
+
+# Firebase local artifacts
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Flutter (for the upcoming frontend)
+frontend/**/.dart_tool/
+frontend/**/.flutter-plugins
+frontend/**/.flutter-plugins-dependencies
+frontend/**/build/

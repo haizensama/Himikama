@@ -1,20 +1,75 @@
-# Byte-compiled / optimized / DLL files
+# Himikama repository ignore policy
+
+# -----------------------------------------------------------------------------
+# Secrets and local configuration
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+!**/.env.example
+!**/.env.*.example
+.envrc
+
+secrets/
+**/firebase-service-account*.json
+**/*firebase*service*account*.json
+**/*service-account-key*.json
+**/serviceAccountKey*.json
+
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+key.properties
+
+.pypirc
+.npmrc
+
+# Firebase client configuration is intentionally not ignored:
+#   frontend/android/app/google-services.json
+#   frontend/lib/firebase_options.dart
+
+# -----------------------------------------------------------------------------
+# Sensitive local records and generated data stores
+# -----------------------------------------------------------------------------
+backend/attempts/
+backend/db/
+backend/logs/
+backend/tmp/
+
+# Firebase emulator and CLI artifacts
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+database-debug.log
+ui-debug.log
+
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
 __pycache__/
 *.py[codz]
 *$py.class
-
-# C extensions
 *.so
 
-# Distribution / packaging
 .Python
+.venv/
+venv/
+env/
+ENV/
+__pypackages__/
+
 build/
-develop-eggs/
 dist/
+develop-eggs/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -26,121 +81,85 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
 .tox/
 .nox/
+.hypothesis/
 .coverage
 .coverage.*
-.cache
-nosetests.xml
+htmlcov/
 coverage.xml
+nosetests.xml
 *.cover
 *.py.cover
-.hypothesis/
-.pytest_cache/
-cover/
 
-# Translations
-*.mo
-*.pot
-
-# Django stuff
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff
-instance/
+.ipynb_checkpoints/
+.scrapy/
 .webassets-cache
-
-# Scrapy stuff
-.scrapy
-
-# Sphinx documentation
+.pybuilder/
+cython_debug/
 docs/_build/
 
-# PyBuilder
-.pybuilder/
-target/
+# -----------------------------------------------------------------------------
+# Flutter / Dart / Android / iOS
+# -----------------------------------------------------------------------------
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.pub-cache/
+frontend/.pub/
+frontend/build/
+frontend/coverage/
+frontend/**/doc/api/
 
-# Jupyter Notebook
-.ipynb_checkpoints
+frontend/android/.gradle/
+frontend/android/captures/
+frontend/android/local.properties
+frontend/android/**/key.properties
+frontend/android/**/.cxx/
+frontend/android/app/debug/
+frontend/android/app/profile/
+frontend/android/app/release/
+frontend/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 
-# IPython
-profile_default/
-ipython_config.py
+frontend/ios/Flutter/.last_build_id
+frontend/ios/Flutter/ephemeral/
+frontend/ios/Flutter/Generated.xcconfig
+frontend/ios/Flutter/flutter_export_environment.sh
+frontend/ios/Pods/
+frontend/ios/.symlinks/
+frontend/ios/**/DerivedData/
+frontend/ios/**/xcuserdata/
 
-# PEP 582
-__pypackages__/
+app.*.symbols
+app.*.map.json
 
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
-# Redis
-*.rdb
-*.aof
-*.pid
-
-# SageMath
-*.sage.py
-
-# Environments
-.env
-.envrc
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder
-.spyderproject
-.spyproject
-
-# Rope
-.ropeproject
-
-# mkdocs
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre
-.pyre/
-
-# pytype
-.pytype/
-
-# Cython
-cython_debug/
-
-# VS Code
+# -----------------------------------------------------------------------------
+# IDE, editor, OS and temporary files
+# -----------------------------------------------------------------------------
+.idea/
 .vscode/
-tempCodeRunnerFile.py
+*.iml
+*.ipr
+*.iws
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+*.log
+*.bak
+*.old
+*.orig
+*.rej
+*.before_*
 
-# Ruff
-.ruff_cache/
-
-# PyPI
-.pypirc
-
-secrets/
-*.json
-
-# Streamlit
-.streamlit/secrets.toml
+# Local copies and superseded evaluation output
+frontend_backup_*/
+Temp Evaluations/
+backend/evaluation/outputs_partial_clean/
+backend/evaluation/full_himikama_outputs.jsonl

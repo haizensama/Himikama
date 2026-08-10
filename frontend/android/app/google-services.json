@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "140045392784",
+    "project_id": "himikama-dev",
+    "storage_bucket": "himikama-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:140045392784:android:b2ad7b3de8de33f6fa3115",
+        "android_client_info": {
+          "package_name": "lk.himikama.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBr2vEIgvmEU8ef0bpNfEkjCBWocZfyNPY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

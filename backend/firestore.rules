@@ -1,0 +1,13 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Himikama legal records are backend-only. Flutter authenticates with
+    // Firebase Authentication, then calls FastAPI with a Firebase ID token.
+    // Firebase Admin on FastAPI bypasses these client rules and enforces
+    // ownership using the verified token UID.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

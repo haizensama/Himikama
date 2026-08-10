@@ -1,0 +1,30 @@
+{
+  "full_variant": "full_himikama",
+  "ablation_variant": "controlled_no_step9",
+  "good_metric_deltas_full_minus_ablation": {
+    "final_article_precision": 0.32974661575841724,
+    "final_article_recall": 0.0434782608695653,
+    "final_article_f1": 0.20721885254051897,
+    "final_article_exact_match": 0.32,
+    "overall_assessment_accuracy": 0.17999999999999994,
+    "no_violation_non_overclaim_accuracy": 0.5,
+    "case_hit@3": 0.0,
+    "case_mrr": 0.0
+  },
+  "bad_metric_reductions_ablation_minus_full": {
+    "unsupported_final_article_rate": 0.3297466157584172,
+    "rejected_article_overclaim_rate_vs_gold_rejected": 0.2891566265060241,
+    "weak_article_overclaim_rate_vs_gold_weak": 0.0,
+    "no_violation_false_violation_rate": 0.5,
+    "confidence_calibration_mean_absolute_error": 0.23360000000000003
+  },
+  "h1_primary_metrics_improved": [
+    "unsupported_final_article_rate",
+    "rejected_article_overclaim_rate_vs_gold_rejected",
+    "no_violation_false_violation_rate"
+  ],
+  "h1_primary_metrics_worsened": [],
+  "h1_supported_by_primary_overclaim_metrics": true,
+  "h2_safety_recall_tradeoff_pattern": false,
+  "interpretation_note": "For good metrics, positive means full_himikama is higher. For bad metrics, positive means full_himikama reduced the bad rate compared with controlled_no_step9."
+}

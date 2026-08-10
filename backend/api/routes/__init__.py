@@ -1,0 +1,1 @@
+"""Himikama API route package."""

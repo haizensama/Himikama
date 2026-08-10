@@ -13,7 +13,8 @@ Responsibility:
     This module contains NO LLM calls.
     It does not call ChromaDB.
     It does not perform legal reasoning.
-    It only evaluates the structured results returned by steps.py.
+    It only evaluates the structured results returned by steps.py
+    and runner.py.
 
 Inputs:
     step_results:
@@ -22,6 +23,7 @@ Inputs:
 
     articles_identified:
         Optional list of articles identified in Step 4.
+        These are candidate articles, not final legal conclusions.
         If omitted, this module attempts to read them from:
             step_results["step_4"]["data"]["articles_identified"]
 
@@ -56,17 +58,26 @@ Confidence scoring:
         Downgrade by one level for each downgrade flag:
             no_harm
             weak_precedent
-            inconsistent
+            final_supported_inconsistent
             state_actor_uncertain
             chain_incomplete
 
         Informational only:
             low_coverage
+            candidate_inconsistency
 
     Final levels:
         high   → no downgrade flags
         medium → one downgrade flag
         low    → two or more downgrade flags
+
+Structured Assessment:
+    This file reads Step 10 structured assessment if available:
+
+        step_results["step_10"]["data"]["structured_assessment"]
+
+    The confidence layer does not create or modify final article
+    conclusions. It only records them in evaluation metadata.
 
 Usage:
     from chain.confidence import apply_confidence_layer
@@ -103,7 +114,7 @@ MANDATORY_DISCLAIMER = (
     "licensed lawyer before taking any legal action."
 )
 
-# Articles with fewer than 10 cases in the current 392-case corpus.
+# Articles with fewer than 10 cases in the current corpus.
 # Update this set after every major corpus expansion and audit rerun.
 LOW_COVERAGE_ARTICLES: set[str] = {
     "10",
@@ -137,11 +148,16 @@ STATUS_TIME_BARRED = "time_barred"
 STATUS_NOT_STATE_ACTOR = "not_state_actor"
 STATUS_CHAIN_INCOMPLETE = "chain_incomplete"
 
+# Structured assessment article statuses
+ARTICLE_STATUS_SUPPORTED = "supported"
+ARTICLE_STATUS_WEAK_OR_UNCERTAIN = "weak_or_uncertain"
+ARTICLE_STATUS_REJECTED = "rejected"
+
 # Flags that reduce confidence by one level each.
 DOWNGRADE_FLAGS: set[str] = {
     "no_harm",
     "weak_precedent",
-    "inconsistent",
+    "final_supported_inconsistent",
     "state_actor_uncertain",
     "chain_incomplete",
 }
@@ -149,6 +165,7 @@ DOWNGRADE_FLAGS: set[str] = {
 # Flags that are shown to the user/evaluator but do not reduce confidence.
 INFORMATIONAL_FLAGS: set[str] = {
     "low_coverage",
+    "candidate_inconsistency",
 }
 
 EXPECTED_COMPLETED_STEPS: tuple[str, ...] = (
@@ -243,6 +260,7 @@ def _step_exists(step_results: dict[str, Any], step_key: str) -> bool:
 def _step_passed(step_results: dict[str, Any], step_key: str) -> bool:
     """
     Read a step's passed field safely.
+
     Missing steps default to True so missing Step 2 does not get
     misclassified as not_state_actor. Chain completeness is checked
     separately.
@@ -255,12 +273,80 @@ def _extract_articles_from_step_results(step_results: dict[str, Any]) -> list[st
     """
     Extract articles_identified from Step 4 if the caller did not
     provide articles_identified explicitly.
+
+    These are candidate articles, not final Step 10 conclusions.
     """
     step_4_data = _get_step_data(step_results, "step_4")
     articles = step_4_data.get("articles_identified", [])
     if not isinstance(articles, list):
         return []
     return [str(article) for article in articles if article]
+
+
+def _extract_structured_assessment(step_results: dict[str, Any]) -> dict[str, Any]:
+    """
+    Extract normalized Step 10 structured assessment if available.
+
+    Preferred location:
+        step_results["step_10"]["data"]["structured_assessment"]
+
+    Returns an empty dict if Step 10 has not yet been upgraded.
+    """
+    step_10_data = _get_step_data(step_results, "step_10")
+    structured = step_10_data.get("structured_assessment", {})
+    return structured if isinstance(structured, dict) else {}
+
+
+def _extract_final_potentially_violated_articles(
+    structured_assessment: dict[str, Any],
+) -> list[str]:
+    """
+    Extract final supported articles from structured assessment.
+    """
+    articles = structured_assessment.get("final_potentially_violated_articles", [])
+    if not isinstance(articles, list):
+        return []
+    return _dedupe_preserve_order([str(article) for article in articles if article])
+
+
+def _extract_final_weak_or_uncertain_articles(
+    structured_assessment: dict[str, Any],
+) -> list[str]:
+    """
+    Extract final weak or uncertain articles from structured assessment.
+    """
+    articles = structured_assessment.get("final_weak_or_uncertain_articles", [])
+    if not isinstance(articles, list):
+        return []
+    return _dedupe_preserve_order([str(article) for article in articles if article])
+
+
+def _extract_final_rejected_articles(
+    structured_assessment: dict[str, Any],
+) -> list[str]:
+    """
+    Extract final rejected articles from structured assessment.
+    """
+    articles = structured_assessment.get("final_rejected_articles", [])
+    if not isinstance(articles, list):
+        return []
+    return _dedupe_preserve_order([str(article) for article in articles if article])
+
+
+def _extract_structured_article_assessments(
+    structured_assessment: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """
+    Extract per-article structured assessments.
+    """
+    assessments = structured_assessment.get("article_assessments", [])
+    if not isinstance(assessments, list):
+        return []
+    return [
+        assessment
+        for assessment in assessments
+        if isinstance(assessment, dict)
+    ]
 
 
 def _dedupe_preserve_order(items: list[str]) -> list[str]:
@@ -333,6 +419,141 @@ def _check_inconsistent(step_results: dict[str, Any]) -> bool:
     return bool(step_9_data.get("inconsistencies_found", False))
 
 
+def _find_articles_with_negative_step9_mentions(
+    step_results: dict[str, Any],
+    articles: list[str],
+) -> list[str]:
+    """
+    Find articles that Step 9 appears to criticize or mark as unsupported.
+
+    This is intentionally conservative. It only links an inconsistency
+    to an article when Step 9 mentions that article near negative
+    support language. This prevents a rejected candidate article from
+    lowering confidence in a separate, well-supported final article.
+    """
+    if not articles or not _step_exists(step_results, "step_9"):
+        return []
+
+    step_9_answer = str(_get_step(step_results, "step_9").get("answer", ""))
+    if not step_9_answer.strip():
+        return []
+
+    lower_answer = step_9_answer.lower()
+
+    negative_signals = [
+        "does not support",
+        "not supported",
+        "unsupported",
+        "not mentioned",
+        "no support",
+        "weak support",
+        "limited support",
+        "insufficient support",
+        "contradict",
+        "inconsistent",
+        "mismatch",
+        "conflict",
+        "does not align",
+        "not align",
+        "not applicable",
+        "not relevant",
+    ]
+
+    affected: list[str] = []
+
+    for article in _dedupe_preserve_order([
+        str(article).strip()
+        for article in articles
+        if str(article).strip()
+    ]):
+        article_lower = article.lower()
+        start = 0
+
+        while True:
+            index = lower_answer.find(article_lower, start)
+            if index == -1:
+                break
+
+            window_start = max(0, index - 450)
+            window_end = min(len(lower_answer), index + len(article_lower) + 450)
+            window = lower_answer[window_start:window_end]
+
+            if any(signal in window for signal in negative_signals):
+                affected.append(article)
+                break
+
+            start = index + len(article_lower)
+
+    return _dedupe_preserve_order(affected)
+
+
+def _check_final_supported_inconsistent(
+    step_results: dict[str, Any],
+    final_supported_articles: list[str],
+) -> bool:
+    """
+    Return True only when Step 9 inconsistency appears to affect
+    final supported articles.
+
+    If structured final articles are unavailable, fall back to the
+    legacy behavior and treat Step 9 inconsistency as confidence-
+    reducing.
+    """
+    if not _check_inconsistent(step_results):
+        return False
+
+    if not final_supported_articles:
+        return True
+
+    affected_supported = _find_articles_with_negative_step9_mentions(
+        step_results,
+        final_supported_articles,
+    )
+
+    return bool(affected_supported)
+
+
+def _build_inconsistency_details(
+    step_results: dict[str, Any],
+    *,
+    final_supported_articles: list[str],
+    final_weak_or_uncertain_articles: list[str],
+    final_rejected_articles: list[str],
+) -> dict[str, Any]:
+    """
+    Build detailed Step 9 inconsistency metadata.
+
+    This helps distinguish true final-answer inconsistency from
+    candidate-level inconsistency that Step 10 already handled by
+    marking articles as weak_or_uncertain or rejected.
+    """
+    step_9_data = _get_step_data(step_results, "step_9")
+
+    affected_supported = _find_articles_with_negative_step9_mentions(
+        step_results,
+        final_supported_articles,
+    )
+    affected_weak = _find_articles_with_negative_step9_mentions(
+        step_results,
+        final_weak_or_uncertain_articles,
+    )
+    affected_rejected = _find_articles_with_negative_step9_mentions(
+        step_results,
+        final_rejected_articles,
+    )
+
+    return {
+        "consistent": step_9_data.get("consistent"),
+        "inconsistencies_found": step_9_data.get("inconsistencies_found"),
+        "final_supported_articles": final_supported_articles,
+        "final_weak_or_uncertain_articles": final_weak_or_uncertain_articles,
+        "final_rejected_articles": final_rejected_articles,
+        "affected_supported_articles": affected_supported,
+        "affected_weak_or_uncertain_articles": affected_weak,
+        "affected_rejected_articles": affected_rejected,
+    }
+
+
 def _check_state_actor_uncertain(step_results: dict[str, Any]) -> bool:
     """
     Step 2 passed but remained uncertain.
@@ -348,11 +569,16 @@ def _check_state_actor_uncertain(step_results: dict[str, Any]) -> bool:
     return bool(step_2_data.get("is_uncertain", False))
 
 
-def _find_low_coverage_articles(articles_identified: list[str]) -> list[str]:
-    """Return identified articles that have low corpus coverage."""
+def _find_low_coverage_articles(articles_for_coverage_check: list[str]) -> list[str]:
+    """
+    Return articles that have low corpus coverage.
+
+    Prefer final Step 10 supported/weak articles when available.
+    Fall back to Step 4 candidate articles before Step 10 is upgraded.
+    """
     return [
         article
-        for article in _dedupe_preserve_order(articles_identified)
+        for article in _dedupe_preserve_order(articles_for_coverage_check)
         if article in LOW_COVERAGE_ARTICLES
     ]
 
@@ -497,10 +723,29 @@ def _build_explanation(
             "the strength of precedent comparison."
         )
 
-    if "inconsistent" in flags:
+    if "final_supported_inconsistent" in flags:
+        affected_supported = flag_details.get(
+            "final_supported_inconsistent",
+            {},
+        ).get("affected_supported_articles", [])
+        if affected_supported:
+            notes.append(
+                "The cross-validation step raised concerns about final "
+                "supported article(s): "
+                f"{', '.join(affected_supported)}."
+            )
+        else:
+            notes.append(
+                "The cross-validation step raised concerns that may affect "
+                "the final supported article conclusions."
+            )
+
+    if "candidate_inconsistency" in flags:
         notes.append(
-            "The cross-validation step found inconsistencies between the "
-            "identified articles and the case-law pattern."
+            "The cross-validation step found inconsistency only in candidate "
+            "article(s) that were later marked weak/uncertain or rejected, "
+            "so this is treated as an informational caution rather than a "
+            "direct downgrade of the final supported conclusion."
         )
 
     if "low_coverage" in flags:
@@ -544,9 +789,29 @@ def _build_evaluation_metadata(
     step_6_data = _get_step_data(step_results, "step_6")
     step_2_data = _get_step_data(step_results, "step_2")
 
+    structured_assessment = _extract_structured_assessment(step_results)
+    final_potentially_violated_articles = (
+        _extract_final_potentially_violated_articles(structured_assessment)
+    )
+    final_weak_or_uncertain_articles = (
+        _extract_final_weak_or_uncertain_articles(structured_assessment)
+    )
+    final_rejected_articles = _extract_final_rejected_articles(
+        structured_assessment
+    )
+    article_assessments = _extract_structured_article_assessments(
+        structured_assessment
+    )
+
     case_ids = step_7_data.get("case_ids", [])
     if not isinstance(case_ids, list):
         case_ids = []
+
+    case_ids = _dedupe_preserve_order([
+        str(case_id)
+        for case_id in case_ids
+        if case_id
+    ])
 
     completed_steps = [
         step_key
@@ -560,7 +825,31 @@ def _build_evaluation_metadata(
         "confidence_level": confidence_level,
         "flags": flags,
         "flag_details": flag_details,
+
+        # Candidate Step 4 articles.
+        # These are useful for debugging and retrieval analysis,
+        # but should not be used as the main final-answer metric.
         "articles_identified": articles_identified,
+
+        # Final Step 10 structured conclusions.
+        # These are the preferred fields for quantitative evaluation.
+        "structured_assessment": structured_assessment,
+        "final_potentially_violated_articles": (
+            final_potentially_violated_articles
+        ),
+        "final_weak_or_uncertain_articles": final_weak_or_uncertain_articles,
+        "final_rejected_articles": final_rejected_articles,
+        "overall_assessment": structured_assessment.get(
+            "overall_assessment",
+            "",
+        ),
+        "precedent_alignment": structured_assessment.get(
+            "precedent_alignment",
+            "",
+        ),
+        "article_assessments": article_assessments,
+
+        # Existing confidence/evaluation metadata.
         "low_coverage_articles": flag_details.get("low_coverage", {}).get(
             "articles",
             [],
@@ -595,6 +884,7 @@ def apply_confidence_layer(
         articles_identified:
             Optional list of article numbers identified in Step 4.
             If omitted, this function extracts them from step_results.
+            These are candidate articles, not final legal conclusions.
 
         final_answer:
             Optional Step 10 synthesis text. If provided, the returned
@@ -614,6 +904,26 @@ def apply_confidence_layer(
         else _extract_articles_from_step_results(step_results)
     )
     articles = _dedupe_preserve_order(articles)
+
+    structured_assessment = _extract_structured_assessment(step_results)
+    final_potentially_violated_articles = (
+        _extract_final_potentially_violated_articles(structured_assessment)
+    )
+    final_weak_or_uncertain_articles = (
+        _extract_final_weak_or_uncertain_articles(structured_assessment)
+    )
+    final_rejected_articles = _extract_final_rejected_articles(
+        structured_assessment
+    )
+
+    # Use final supported + weak articles for low-coverage warning when
+    # available. Fall back to Step 4 candidate articles until Step 10
+    # structured output is fully implemented.
+    articles_for_coverage_check = (
+        final_potentially_violated_articles + final_weak_or_uncertain_articles
+    )
+    if not articles_for_coverage_check:
+        articles_for_coverage_check = articles
 
     result = ConfidenceResult()
 
@@ -710,21 +1020,47 @@ def apply_confidence_layer(
         }
 
     if _check_inconsistent(step_results):
-        flags.append("inconsistent")
-        step_9_data = _get_step_data(step_results, "step_9")
-        flag_details["inconsistent"] = {
-            "consistent": step_9_data.get("consistent"),
-            "inconsistencies_found": step_9_data.get(
-                "inconsistencies_found",
-            ),
-        }
+        inconsistency_details = _build_inconsistency_details(
+            step_results,
+            final_supported_articles=final_potentially_violated_articles,
+            final_weak_or_uncertain_articles=final_weak_or_uncertain_articles,
+            final_rejected_articles=final_rejected_articles,
+        )
 
-    low_coverage_articles = _find_low_coverage_articles(articles)
+        if _check_final_supported_inconsistent(
+            step_results,
+            final_potentially_violated_articles,
+        ):
+            flags.append("final_supported_inconsistent")
+            flag_details["final_supported_inconsistent"] = {
+                **inconsistency_details,
+                "reason": (
+                    "Step 9 inconsistency appears to affect one or more "
+                    "final supported article conclusions."
+                ),
+            }
+        else:
+            flags.append("candidate_inconsistency")
+            flag_details["candidate_inconsistency"] = {
+                **inconsistency_details,
+                "reason": (
+                    "Step 9 inconsistency appears limited to candidate "
+                    "article(s) that Step 10 marked weak_or_uncertain or "
+                    "rejected."
+                ),
+            }
+
+    low_coverage_articles = _find_low_coverage_articles(
+        articles_for_coverage_check
+    )
     if low_coverage_articles:
         flags.append("low_coverage")
         flag_details["low_coverage"] = {
             "articles": low_coverage_articles,
-            "reason": "These articles have fewer than 10 cases in the corpus.",
+            "reason": (
+                "These final supported/weak article(s) have limited coverage "
+                "in the corpus."
+            ),
         }
 
     flags = _dedupe_preserve_order(flags)
